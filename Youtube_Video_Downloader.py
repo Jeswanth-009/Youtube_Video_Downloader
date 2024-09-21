@@ -5,6 +5,8 @@ import re
 
 def get_size_in_mb(size):
     """Convert file size from bytes to MB."""
+    if size is None:
+        return "Unknown"
     return round(size / (1024 * 1024), 2)  # Convert bytes to MB
 
 def sanitize_filename(filename):
@@ -17,7 +19,7 @@ def list_formats(formats, media_type):
     for idx, fmt in enumerate(formats):
         resolution = fmt.get('height', 'N/A') if media_type == 'video' else 'N/A'
         bitrate = fmt.get('tbr', 'N/A') if media_type == 'video' else fmt.get('abr', 'N/A')
-        size_mb = get_size_in_mb(fmt.get('filesize', 0))
+        size_mb = get_size_in_mb(fmt.get('filesize'))
         print(f"{idx + 1}. {fmt['format_id']} - Resolution: {resolution}, Bitrate: {bitrate} kbps, Size: {size_mb} MB")
 
 def download_and_merge(url, save_path):
@@ -59,8 +61,6 @@ def download_and_merge(url, save_path):
 
             # Sanitize title and create file paths
             sanitized_title = sanitize_filename(info_dict['title'])
-            video_file = os.path.join(save_path, f"{sanitized_title}.{selected_video_format['ext']}")
-            audio_file = os.path.join(save_path, f"{sanitized_title}.{selected_audio_format['ext']}")
             output_file = os.path.join(save_path, f"{sanitized_title}_merged.mp4")
 
             # Download selected formats
@@ -68,43 +68,32 @@ def download_and_merge(url, save_path):
                 'outtmpl': os.path.join(save_path, f'{sanitized_title}.%(ext)s'),
                 'format': f"{selected_video_format['format_id']}+{selected_audio_format['format_id']}",
                 'noplaylist': True,
-                'progress_hooks': [print_progress]
+                'progress_hooks': [print_progress],
+                'postprocessors': [{
+                    'key': 'FFmpegVideoConvertor',
+                    'preferedformat': 'mp4',
+                }],
+                'merge_output_format': 'mp4'
             }
 
-            print(f"\nDownloading video and audio...")
+            print(f"\nDownloading and merging video and audio...")
             with yt_dlp.YoutubeDL(ydl_opts_download) as ydl:
                 ydl.download([url])
 
-            # Ensure the files exist before merging
-            if not os.path.exists(video_file) or not os.path.exists(audio_file):
-                print(f"Error: One or both files not found: {video_file}, {audio_file}")
-                return
-
-            # Merge video and audio with ffmpeg
-            merge_command = [
-                'ffmpeg',
-                '-i', video_file,
-                '-i', audio_file,
-                '-c:v', 'copy',
-                '-c:a', 'aac',
-                '-strict', 'experimental',
-                output_file
-            ]
-
-            print(f"\nMerging video and audio into: {output_file}")
-            subprocess.run(merge_command, check=True)
-            print("Merge completed.")
+            print(f"Download and merge completed. File saved as: {output_file}")
 
     except Exception as e:
         print(f"Error: {e}")
 
 def print_progress(d):
     """Print download progress."""
-    if d['status'] == 'finished':
+    if d['status'] == 'downloading':
+        print(f"\rDownloading: {d['_percent_str']} of {d['_total_bytes_str']}", end='')
+    elif d['status'] == 'finished':
         print(f"\nDone downloading: {d['filename']}")
 
 # Example usage
-url = "https://www.youtube.com/watch?v=fGfugiUBPYQ"
+url = "https://www.youtube.com/watch?v=PJWemSzExXs"
 save_path = "D:/youtube_download"
 
 download_and_merge(url, save_path)
